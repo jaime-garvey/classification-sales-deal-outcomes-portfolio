@@ -8,10 +8,10 @@ How can we help sales representatives prioritize deals?
 
 
 ## Notebooks
-01 Data Acquistion
-02 Preprocessing & EDA
-03 Modeling
-04 Data Visualization
+01 Data Acquistion  
+02 Preprocessing & EDA  
+03 Modeling  
+04 Data Visualization  
 
 
 ## Run
