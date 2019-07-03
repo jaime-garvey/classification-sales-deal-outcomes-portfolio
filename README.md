@@ -1,7 +1,7 @@
 # Deal or No Deal? Classification of Outcomes for Sales Deals
-Random Forest Model to Classify Sales Deals Outcomes
+(Random Forest Model to Classify Sales Deals Outcomes)
 
-This project uses IBM data for various sales deal and their characteristics to classify the outcome of sales. This resulted in a Flask app (instructions below)
+This project uses IBM data for various sales deal and their characteristics to classify the outcome of sales. This resulted in a Flask app (instructions below).
 
 ## Target Question
 How can we help sales representatives prioritize deals?
