@@ -1,0 +1,629 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Getting Started | Data Prep | Data Exploration | Preprocessing | **Model Tuning** | Final Model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import sys\n",
+    "sys.path.insert(0, '../modules')\n",
+    "\n",
+    "# now read in the new function\n",
+    "from helpers import get_data\n",
+    "from preprocessor import Preprocessor"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# more imports\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt\n",
+    "import seaborn as sns\n",
+    "\n",
+    "import sklearn\n",
+    "from sklearn.metrics import make_scorer, accuracy_score, roc_auc_score,classification_report, precision_score, recall_score, confusion_matrix, precision_recall_curve,f1_score\n",
+    "from sklearn.utils import resample\n",
+    "from imblearn.over_sampling  import SMOTE, ADASYN\n",
+    "from sklearn.linear_model import LogisticRegression\n",
+    "from sklearn.pipeline import make_pipeline\n",
+    "from sklearn.preprocessing import StandardScaler\n",
+    "from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split, GridSearchCV\n",
+    "\n",
+    "from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier\n",
+    "\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Read Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "X_train, y_train = get_data('train')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "X_test, y_test = get_data('test')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Use preprocessor on training data\n",
+    "p = Preprocessor(cols_to_filter=['Competitor Type'])\n",
+    "X_train = p.fit_transform(X_train)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "X_test = p.transform(X_test)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Transform y where 1 = Won and 0=Loss\n",
+    "y_train = pd.get_dummies(y_train, drop_first=True)\n",
+    "y_test = pd.get_dummies(y_test, drop_first=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "toc-hr-collapsed": true
+   },
+   "source": [
+    "## Class Imbalance"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0    0.775051\n",
+       "1    0.224949\n",
+       "Name: Won, dtype: float64"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Check percent of opportunity that were won (1) versus lost (0)\n",
+    "y_train['Won'].value_counts(1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Text(0, 0.5, 'Count')"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 864x576 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "plt.figure(figsize=(12,8))\n",
+    "deal_outcomes = y_train['Won'].value_counts()\n",
+    "sns.barplot(y=deal_outcomes.values, x=deal_outcomes.index, alpha=0.6)\n",
+    "plt.title('Distribution of Opportunity Result')\n",
+    "plt.xlabel('Opportunity Result', fontsize=16)\n",
+    "plt.ylabel('Count', fontsize=16)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/utils/validation.py:724: DataConversionWarning: A column-vector y was passed when a 1d array was expected. Please change the shape of y to (n_samples, ), for example using ravel().\n",
+      "  y = column_or_1d(y, warn=True)\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Original shape: (54519, 39) (54519, 1)\n",
+      "Upsampled shape: (84510, 39) (84510, 1)\n",
+      "SMOTE sample shape: (84510, 39) (84510,)\n"
+     ]
+    },
+    {
+     "ename": "NameError",
+     "evalue": "name 'x_train_ad' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-10-2c374dac80f9>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[1;32m     27\u001b[0m \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"Upsampled shape:\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mX_train_u\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train_u\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     28\u001b[0m \u001b[0mprint\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0;34m\"SMOTE sample shape:\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mx_train_sm\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train_sm\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 29\u001b[0;31m \u001b[0mprint\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0;34m\"ADASYN sample shape:\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mx_train_ad\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train_ad\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     30\u001b[0m \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"Downsampled shape:\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mX_train_d\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train_d\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mNameError\u001b[0m: name 'x_train_ad' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "# Upsample minority class\n",
+    "X_train_u, y_train_u = resample(X_train[y_train['Won'] == 1],\n",
+    "                                y_train[y_train['Won'] == 1],\n",
+    "                                replace=True,\n",
+    "                                n_samples=X_train[y_train['Won'] == 0].shape[0],\n",
+    "                                                  random_state=1)\n",
+    "\n",
+    "X_train_u = np.concatenate((X_train[y_train['Won'] == 0], X_train_u))\n",
+    "y_train_u = np.concatenate((y_train[y_train['Won'] == 0], y_train_u))\n",
+    "\n",
+    "\n",
+    "# Upsample using SMOTE\n",
+    "sm = SMOTE(random_state=12, ratio = 1.0)\n",
+    "x_train_sm, y_train_sm = sm.fit_sample(X_train, y_train)\n",
+    "\n",
+    "# Downsample majority class\n",
+    "X_train_d, y_train_d = resample(X_train[y_train['Won'] == 0],\n",
+    "                                y_train[y_train['Won'] == 0],\n",
+    "                                replace=True,\n",
+    "                                n_samples=X_train[y_train['Won'] == 1].shape[0],\n",
+    "                                random_state=1)\n",
+    "X_train_d = np.concatenate((X_train[y_train['Won'] == 1], X_train_d))\n",
+    "y_train_d = np.concatenate((y_train[y_train['Won'] == 1], y_train_d))\n",
+    "\n",
+    "\n",
+    "print(\"Original shape:\", X_train.shape, y_train.shape)\n",
+    "print(\"Upsampled shape:\", X_train_u.shape, y_train_u.shape)\n",
+    "print (\"SMOTE sample shape:\", x_train_sm.shape, y_train_sm.shape)\n",
+    "print (\"ADASYN sample shape:\", x_train_ad.shape, y_train_ad.shape)\n",
+    "print(\"Downsampled shape:\", X_train_d.shape, y_train_d.shape)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Test Methods with Logistic Regression (Using Cross Validation)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The best Recall Score for Original data:\n",
+      "0.08291887484712597\n",
+      "The best Recall Score for Upsampled data:\n",
+      "0.6966749497100934\n",
+      "The best Recall Score for SMOTE data:\n",
+      "0.7782510945450243\n",
+      "The best Recall Score for Downsampled data:\n",
+      "0.6060850348709075\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "0.727176962789513"
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#Create Training Sets\n",
+    "\n",
+    "methods_train_data = {\"Original\": (X_train, y_train['Won']),\n",
+    "                \"Upsampled\": (X_train_u, y_train_u[:,0]),\n",
+    "                \"SMOTE\":(x_train_sm, y_train_sm),\n",
+    "                \"Downsampled\": (X_train_d, y_train_d[:,0])}\n",
+    "\n",
+    "# 5-Fold cross validation using Logistic Regression\n",
+    "for method in methods_train_data.keys():\n",
+    "    lr_results = cross_val_score(LogisticRegression(solver='lbfgs'), methods_train_data[method][0], methods_train_data[method][1], cv=5, scoring='recall')\n",
+    "    print(f\"The best Recall Score for {method} data:\")\n",
+    "    print (lr_results.mean())\n",
+    " \n",
+    "cross_val_score(LogisticRegression(solver='lbfgs',class_weight='balanced'), X_train, y_train['Won'], cv=5, scoring='recall').mean()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "toc-hr-collapsed": true
+   },
+   "source": [
+    "# Model Selection"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Logistic Regression"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "\n",
+      " ---Logistic Regression Model---\n",
+      "Logistic Regression AUC = 0.74\n",
+      "              precision    recall  f1-score   support\n",
+      "\n",
+      "           0       0.93      0.66      0.77     18081\n",
+      "           1       0.42      0.82      0.55      5327\n",
+      "\n",
+      "    accuracy                           0.70     23408\n",
+      "   macro avg       0.67      0.74      0.66     23408\n",
+      "weighted avg       0.81      0.70      0.72     23408\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "lr = LogisticRegression(solver='lbfgs')\n",
+    "\n",
+    "#Fit model\n",
+    "# Fit the model to the Upsampling data\n",
+    "lr = lr.fit(x_train_sm, y_train_sm)\n",
+    "\n",
+    "print (\"\\n\\n ---Logistic Regression Model---\")\n",
+    "lr_auc = roc_auc_score(y_test['Won'], lr.predict(X_test))\n",
+    "\n",
+    "print (\"Logistic Regression AUC = %2.2f\" % lr_auc)\n",
+    "\n",
+    "lr2 = lr.fit(x_train_sm, y_train_sm)\n",
+    "print(classification_report(y_test['Won'], lr.predict(X_test)))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Random Forest"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/ensemble/forest.py:245: FutureWarning: The default value of n_estimators will change from 10 in version 0.20 to 100 in 0.22.\n",
+      "  \"10 in version 0.20 to 100 in 0.22.\", FutureWarning)\n",
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/ensemble/forest.py:245: FutureWarning: The default value of n_estimators will change from 10 in version 0.20 to 100 in 0.22.\n",
+      "  \"10 in version 0.20 to 100 in 0.22.\", FutureWarning)\n",
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/ensemble/forest.py:245: FutureWarning: The default value of n_estimators will change from 10 in version 0.20 to 100 in 0.22.\n",
+      "  \"10 in version 0.20 to 100 in 0.22.\", FutureWarning)\n",
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/ensemble/forest.py:245: FutureWarning: The default value of n_estimators will change from 10 in version 0.20 to 100 in 0.22.\n",
+      "  \"10 in version 0.20 to 100 in 0.22.\", FutureWarning)\n",
+      "/Users/Jaime/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/ensemble/forest.py:245: FutureWarning: The default value of n_estimators will change from 10 in version 0.20 to 100 in 0.22.\n",
+      "  \"10 in version 0.20 to 100 in 0.22.\", FutureWarning)\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "0.8485386344811265"
+      ]
+     },
+     "execution_count": 15,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Random Forest Model\n",
+    "rf = RandomForestClassifier()\n",
+    "\n",
+    "rf_result = cross_val_score(rf, x_train_sm, y_train_sm, cv=5, scoring='recall')\n",
+    "\n",
+    "rf_result.mean()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Gradient Boosting Classifier"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "GradientBoostingClassifier(criterion='friedman_mse', init=None,\n",
+       "                           learning_rate=0.1, loss='deviance', max_depth=3,\n",
+       "                           max_features=None, max_leaf_nodes=None,\n",
+       "                           min_impurity_decrease=0.0, min_impurity_split=None,\n",
+       "                           min_samples_leaf=1, min_samples_split=2,\n",
+       "                           min_weight_fraction_leaf=0.0, n_estimators=100,\n",
+       "                           n_iter_no_change=None, presort='auto',\n",
+       "                           random_state=None, subsample=1.0, tol=0.0001,\n",
+       "                           validation_fraction=0.1, verbose=0,\n",
+       "                           warm_start=False)"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "gbc = GradientBoostingClassifier()  \n",
+    "\n",
+    "gbc = gbc.fit(x_train_sm,y_train_sm)\n",
+    "\n",
+    "gbc"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.8497929239143296"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Cross Validation for GBC\n",
+    "\n",
+    "gbc_result = cross_val_score(gbc, x_train_sm, y_train_sm, cv=5, scoring='recall')\n",
+    "gbc_result.mean()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Model Tuning"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create training and validation dataset\n",
+    "x_train, x_valid, y_train, y_valid = train_test_split(x_train_sm, y_train_sm, test_size = 0.3, random_state=0, shuffle=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "parameters = {\n",
+    "    \"loss\":[\"deviance\"],\n",
+    "    \"learning_rate\": [0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2],\n",
+    "    \"min_samples_split\": np.linspace(0.1, 0.5, 12),\n",
+    "    \"min_samples_leaf\": np.linspace(0.1, 0.5, 12),\n",
+    "    \"max_depth\":[3,5,8],\n",
+    "    \"max_features\":[\"log2\",\"sqrt\"],\n",
+    "    \"criterion\": [\"friedman_mse\",  \"mae\"],\n",
+    "    \"subsample\":[0.5, 0.618, 0.8, 0.85, 0.9, 0.95, 1.0],\n",
+    "    \"n_estimators\":[10]\n",
+    "    }"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 67,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def select_params(X, y, max_estimators=1000, max_depth = 3, learning_rate=0.01):\n",
+    "    \n",
+    "\n",
+    "    # Create validation set\n",
+    "    #X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.33, random_state=0, shuffle=True)\n",
+    "    \n",
+    "\n",
+    "    gbc = GradientBoostingClassifier(n_estimators = max_estimators,\n",
+    "                                     learning_rate=learning_rate, \n",
+    "                                     max_depth=max_depth, \n",
+    "                                     loss='deviance',\n",
+    "                                     subsample=0.5)\n",
+    "    \n",
+    "    kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=7)\n",
+    "    #n_estimators = [max_estimators for d in depth]\n",
+    "    \n",
+    "    param_grid = dict(max_depth=depth)\n",
+    "    \n",
+    "    grid_search = GridSearchCV(gbc, param_grid, scoring=\"neg_log_loss\", n_jobs=-1, cv=kfold, verbose=1)\n",
+    "    grid_result = grid_search.fit(X, y)\n",
+    "    \n",
+    "    # Results\n",
+    "    print('best Score: {0}'.format(grid_result.best_score_))\n",
+    "    print('optimal parameters: {}'.format(grid_result.best_params_))\n",
+    "    \n",
+    "    means = grid_result.cv_results_['mean_test_score']\n",
+    "    stds = grid_result.cv_results_['std_test_score']\n",
+    "    params = grid_result.cv_results_['params']\n",
+    "    \n",
+    "    for mean, stdev, param in zip(means, stds, params):\n",
+    "        print(\"mean: {}    std:{}    parameters: {}\".format(mean, stdev, param))\n",
+    "    \n",
+    "    #Plot\n",
+    "    scores = numpy.array(means).reshape(len(max_depth), len(n_estimators))\n",
+    "    for i, value in enumerate(max_depth):\n",
+    "        plt.plot(n_estimators, scores[i], label='depth: ' + str(value))\n",
+    "    plt.legend()\n",
+    "    plt.xlabel('n_estimators')\n",
+    "    plt.ylabel('Log Loss')\n",
+    "    #plt.savefig('n_estimators_vs_max_depth.png')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Tune Max Tree Depth"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 68,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Fitting 5 folds for each of 4 candidates, totalling 20 fits\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "[Parallel(n_jobs=-1)]: Using backend LokyBackend with 4 concurrent workers.\n"
+     ]
+    },
+    {
+     "ename": "KeyboardInterrupt",
+     "evalue": "",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m                         Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-68-740986cc672b>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0mdepth\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;34m[\u001b[0m\u001b[0;36m2\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m4\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m6\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m8\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 2\u001b[0;31m \u001b[0mselect_params\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mx_train_sm\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train_sm\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mmax_estimators\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m1000\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mmax_depth\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mdepth\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mlearning_rate\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m0.1\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m<ipython-input-67-c72a2bcdaa43>\u001b[0m in \u001b[0;36mselect_params\u001b[0;34m(X, y, max_estimators, max_depth, learning_rate)\u001b[0m\n\u001b[1;32m     18\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     19\u001b[0m     \u001b[0mgrid_search\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mGridSearchCV\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mgbc\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mparam_grid\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mscoring\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m\"neg_log_loss\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mn_jobs\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m-\u001b[0m\u001b[0;36m1\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mcv\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mkfold\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mverbose\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m1\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 20\u001b[0;31m     \u001b[0mgrid_result\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mgrid_search\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mfit\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mX\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     21\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     22\u001b[0m     \u001b[0;31m# Results\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/model_selection/_search.py\u001b[0m in \u001b[0;36mfit\u001b[0;34m(self, X, y, groups, **fit_params)\u001b[0m\n\u001b[1;32m    685\u001b[0m                 \u001b[0;32mreturn\u001b[0m \u001b[0mresults\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    686\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 687\u001b[0;31m             \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_run_search\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mevaluate_candidates\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    688\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    689\u001b[0m         \u001b[0;31m# For multi-metric evaluation, store the best_index_, best_params_ and\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/model_selection/_search.py\u001b[0m in \u001b[0;36m_run_search\u001b[0;34m(self, evaluate_candidates)\u001b[0m\n\u001b[1;32m   1146\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0m_run_search\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mevaluate_candidates\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1147\u001b[0m         \u001b[0;34m\"\"\"Search all candidates in param_grid\"\"\"\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 1148\u001b[0;31m         \u001b[0mevaluate_candidates\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mParameterGrid\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mparam_grid\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1149\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1150\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/sklearn/model_selection/_search.py\u001b[0m in \u001b[0;36mevaluate_candidates\u001b[0;34m(candidate_params)\u001b[0m\n\u001b[1;32m    664\u001b[0m                                \u001b[0;32mfor\u001b[0m \u001b[0mparameters\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0mtrain\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mtest\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    665\u001b[0m                                in product(candidate_params,\n\u001b[0;32m--> 666\u001b[0;31m                                           cv.split(X, y, groups)))\n\u001b[0m\u001b[1;32m    667\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    668\u001b[0m                 \u001b[0;32mif\u001b[0m \u001b[0mlen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mout\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m<\u001b[0m \u001b[0;36m1\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/joblib/parallel.py\u001b[0m in \u001b[0;36m__call__\u001b[0;34m(self, iterable)\u001b[0m\n\u001b[1;32m    932\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    933\u001b[0m             \u001b[0;32mwith\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_backend\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mretrieval_context\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 934\u001b[0;31m                 \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mretrieve\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    935\u001b[0m             \u001b[0;31m# Make sure that we get a last message telling us we are done\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    936\u001b[0m             \u001b[0melapsed_time\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mtime\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtime\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m-\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_start_time\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/joblib/parallel.py\u001b[0m in \u001b[0;36mretrieve\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    831\u001b[0m             \u001b[0;32mtry\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    832\u001b[0m                 \u001b[0;32mif\u001b[0m \u001b[0mgetattr\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_backend\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m'supports_timeout'\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;32mFalse\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 833\u001b[0;31m                     \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_output\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mextend\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mjob\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mget\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtimeout\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtimeout\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    834\u001b[0m                 \u001b[0;32melse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    835\u001b[0m                     \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_output\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mextend\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mjob\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mget\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/site-packages/joblib/_parallel_backends.py\u001b[0m in \u001b[0;36mwrap_future_result\u001b[0;34m(future, timeout)\u001b[0m\n\u001b[1;32m    519\u001b[0m         AsyncResults.get from multiprocessing.\"\"\"\n\u001b[1;32m    520\u001b[0m         \u001b[0;32mtry\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 521\u001b[0;31m             \u001b[0;32mreturn\u001b[0m \u001b[0mfuture\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mresult\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtimeout\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mtimeout\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    522\u001b[0m         \u001b[0;32mexcept\u001b[0m \u001b[0mLokyTimeoutError\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    523\u001b[0m             \u001b[0;32mraise\u001b[0m \u001b[0mTimeoutError\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/concurrent/futures/_base.py\u001b[0m in \u001b[0;36mresult\u001b[0;34m(self, timeout)\u001b[0m\n\u001b[1;32m    425\u001b[0m                 \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m__get_result\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    426\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 427\u001b[0;31m             \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_condition\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mwait\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtimeout\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    428\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    429\u001b[0m             \u001b[0;32mif\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_state\u001b[0m \u001b[0;32min\u001b[0m \u001b[0;34m[\u001b[0m\u001b[0mCANCELLED\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mCANCELLED_AND_NOTIFIED\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/miniconda3/envs/classification/lib/python3.7/threading.py\u001b[0m in \u001b[0;36mwait\u001b[0;34m(self, timeout)\u001b[0m\n\u001b[1;32m    294\u001b[0m         \u001b[0;32mtry\u001b[0m\u001b[0;34m:\u001b[0m    \u001b[0;31m# restore state no matter what (e.g., KeyboardInterrupt)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    295\u001b[0m             \u001b[0;32mif\u001b[0m \u001b[0mtimeout\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 296\u001b[0;31m                 \u001b[0mwaiter\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0macquire\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    297\u001b[0m                 \u001b[0mgotit\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mTrue\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    298\u001b[0m             \u001b[0;32melse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m: "
+     ]
+    }
+   ],
+   "source": [
+    "depth = [2, 4, 6, 8]\n",
+    "select_params(x_train_sm, y_train_sm, max_estimators=1000, max_depth=depth, learning_rate=0.1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python [conda env:classification]",
+   "language": "python",
+   "name": "conda-env-classification-py"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
